@@ -33,7 +33,6 @@ static const u32 delta = 1;
 
 static const char procname[] = "qcong";
 
-
 /* 
  *	Learning parameter Definintion
  *	Scaled by "Q_CONG_SCALE"
@@ -92,11 +91,8 @@ static void createMatrix(Matrix *m, u8 *row, u8 col){
 
 	for(i=0; i<numOfState; i++)
 		*(m->row+i) = *(row+i);
-
-	
 	for(i=0; i<sizeOfMatrix; i++)
 		*(m->mat + i) = 0; 
-
 	m -> enabled = 1; 
 }
 
@@ -109,10 +105,6 @@ static void eraseMatrix(Matrix *m){
 		*(m->row + i) = 0; 
 
 	m -> col = 0; 
-
-	//for(i=0; i<sizeOfMatrix; i++)
-	//	*(m->mat + i) = 0; 
-
 	m -> enabled = 0; 
 }
 
@@ -131,7 +123,6 @@ static int getMatValue(Matrix *m, u8 row1, u8 row2, u8 row3, u8 col){
 		return -1; 
 
 	index = m->col * (row1 * m->row[1] * m->row[2] + row2 * m->row[2] + row3) + col;
-	
 	return *(m -> mat + index);
 }
 
@@ -146,12 +137,10 @@ static void reset_cwnd(struct sock *sk, const struct rate_sample *rs){
 	u32 loss; 
 
 	if (qc -> mode == STARTUP){
-		if(inet_csk(sk) -> icsk_ca_state >= TCP_CA_Recovery){
+		if(inet_csk(sk) -> icsk_ca_state >= TCP_CA_Recovery)
 			qc -> mode = NOTHING; 
-		}
-		else{
+		else
 			tp -> snd_cwnd += rs -> acked_sacked;
-		}
 		printk(KERN_INFO "cwnd : %u", tp -> snd_cwnd);
 	}
 
@@ -172,9 +161,8 @@ static u32 getAction(struct sock *sk, const struct rate_sample *rs){
 	state[1] = tp -> snd_cwnd;
 	state[2] = rs -> rtt_us >> 10;
 
-	for(i=0; i<numOfAction; i++){
+	for(i=0; i<numOfAction; i++)
 		Q[i] = getMatValue(&matrix, qc -> current_state[0], qc->current_state[1], qc->current_state[2], i);
-	}
 
 	if(Q[0] == Q[1] && Q[1] == Q[2]){
 		get_random_bytes(&rand, sizeof(rand));
@@ -205,7 +193,6 @@ static u32 getAction(struct sock *sk, const struct rate_sample *rs){
 static u8 checkEnvironment(struct sock* sk){
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct Q_cong *qc = inet_csk_ca(sk);
-
 	return 0; 
 }
 
@@ -249,9 +236,7 @@ static void executeAction(struct sock *sk, const struct rate_sample *rs){
 
 		default : 
 			break;
-
 	}
-
 }
 
 static u32 tcp_q_cong_undo_cwnd(struct sock* sk){
@@ -266,7 +251,6 @@ static void calc_retransmit_during_interval(struct sock* sk){
 	struct Q_cong *qc = inet_csk_ca(sk);
 
 	qc -> retransmit_during_interval = (tp -> total_retrans - qc -> last_packet_loss) * training_interval_msec / jiffies_to_msecs(tcp_jiffies32 - qc -> last_update_stamp);
-	
 	qc -> last_packet_loss = tp -> total_retrans; 
 	printk(KERN_INFO "Packet loss for interval : %u", qc -> retransmit_during_interval);
 }
@@ -276,15 +260,10 @@ static void calc_throughput(struct sock *sk){
 	struct Q_cong *qc = inet_csk_ca(sk);
 
 	u32 segout_for_interval;
-	
 	segout_for_interval = (tp -> segs_out - qc ->last_sequence) * tp ->mss_cache; 
-
 	qc -> estimated_throughput = segout_for_interval * 8 / jiffies_to_msecs(tcp_jiffies32 - qc -> last_update_stamp); 
-
 	printk(KERN_INFO "Throughput : %u\ttime : %u",qc -> estimated_throughput, jiffies_to_msecs(tcp_jiffies32 - qc->last_update_stamp));
-
 	qc -> last_sequence = tp -> segs_out;
-
 }
 
 static void update_state(struct sock *sk, const struct rate_sample *rs){
@@ -303,11 +282,9 @@ static void update_state(struct sock *sk, const struct rate_sample *rs){
 	for(i=0; i<3; i++){
 		if(qc -> current_state[i] < 0)
 			qc -> current_state[i] = 0;
-
 		else if (qc -> current_state[i] > 100)
 			qc -> current_state[i] = 100; 
 	}
-
 	printk(KERN_INFO "c_state : %u %u %u\tp_state : %u %u %u / smoothedRTT : %u", qc -> current_state[0], qc -> current_state[1], qc -> current_state[2], qc -> prev_state[0], qc->prev_state[1], qc->prev_state[2], rs->rtt_us);
 }
 
@@ -332,17 +309,12 @@ static void update_Qtable(struct sock *sk, const struct rate_sample *rs){
 	u8 i;
 	u32 updated_Qvalue;
 	u32 max_tmp; 
-
-
 	
 	for(i=0; i<numOfAction; i++){
 		thisQ[i] = getMatValue(&matrix, qc->prev_state[0], qc->prev_state[1], qc->prev_state[2], i);
 		newQ[i] = getMatValue(&matrix, qc->current_state[0], qc->current_state[1], qc->current_state[2], i);
 	}
-
-	//max_tmp = max_t(u32, newQ[CWND_UP], newQ[CWND_NOTHING]);
-	//max_tmp = max_t(u32, max_tmp, newQ[CWND_DOWN]);
-
+	
 	max_tmp = newQ[0];
 	for(i=0; i<numOfAction; i++){
 		if(max_tmp >= newQ[i])
@@ -358,9 +330,7 @@ static void update_Qtable(struct sock *sk, const struct rate_sample *rs){
 	}
 	
 	printk(KERN_INFO "reward : %u, updated Q : %u", getRewardFromEnvironment(sk, rs),updated_Qvalue);
-		
 	setMatValue(&matrix, qc->prev_state[0], qc->prev_state[1], qc->prev_state[2], qc->action, updated_Qvalue);
-
 }
 
 
@@ -369,7 +339,6 @@ static void training(struct sock *sk, const struct rate_sample *rs){
 	struct Q_cong *qc = inet_csk_ca(sk);
 	u32 reward;
 
-	
 	u32 training_timer_expired = after(tcp_jiffies32, qc -> last_update_stamp + msecs_to_jiffies(training_interval_msec)); 
 
 	if(training_timer_expired && qc -> mode == NOTHING){
@@ -388,7 +357,6 @@ static void training(struct sock *sk, const struct rate_sample *rs){
 			qc -> exited = 0; 
 			return; 
 		}
-
 
 		/* Step4. calculate reward & update Q-table */
 		reward = getRewardFromEnvironment(sk,rs);
@@ -441,7 +409,6 @@ static void update_min_rtt(struct sock *sk, const struct rate_sample* rs){
 			tp -> snd_cwnd = qc -> prior_cwnd;
 		}
 	}
-
 }
 
 
@@ -454,7 +421,6 @@ static void tcp_q_cong_main(struct sock *sk, const struct rate_sample *rs){
 	update_state(sk,rs);
 	training(sk, rs);
 	update_min_rtt(sk,rs);
-
 }
 
 
@@ -527,4 +493,3 @@ module_exit(Q_cong_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("jjun");
 MODULE_DESCRIPTION("Reinforcement Learning Congestion Control Algorithm");
-
